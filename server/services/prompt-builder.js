@@ -6,9 +6,9 @@ const GENDER_MAP = {
 };
 
 const POSE_MAP = {
-  standing: 'standing naturally, arms relaxed, facing camera',
-  walking: 'walking on a runway, dynamic and confident pose',
-  sitting: 'sitting elegantly on a modern stool, relaxed posture',
+  standing: 'standing naturally, arms relaxed, facing camera, full body head-to-toe visible',
+  walking: 'walking on a runway, dynamic and confident pose, full body head-to-toe visible',
+  sitting: 'sitting elegantly on a modern stool, full body from head to toe visible, feet and head in frame',
 };
 
 const BACKGROUND_MAP = {
@@ -34,6 +34,9 @@ function buildPrompt(config) {
     `${poseText},`,
     `${bgText},`,
     'high quality, 4k, studio lighting, full body shot, front view,',
+    'full-length portrait, head to toe completely visible in frame,',
+    'entire body from top of head to bottom of feet must be shown,',
+    'no cropped body, no cut-off head, no cut-off feet, no close-up, no half-body,',
     'fabric texture visible, natural folds, realistic draping',
   ].join(' ');
 }
