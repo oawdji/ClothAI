@@ -22,7 +22,7 @@ function StepUpload() {
       dispatch({ type: 'UPLOAD_SUCCESS', payload: { imageId, url: result.url } })
     } catch (err) {
       const msg = err.response?.data?.error?.message || err.message || '上传失败'
-      dispatch({ type: 'UPLOAD_ERROR', payload: `上传失败 (${file.name}): ${msg}` })
+      dispatch({ type: 'UPLOAD_ERROR', payload: { imageId, message: `上传失败 (${file.name}): ${msg}` } })
     }
   }, [dispatch])
 

@@ -27,18 +27,31 @@ const initialState = {
 function reducer(state, action) {
   switch (action.type) {
 
-    case 'SET_IMAGES':
+    case 'SET_IMAGES': {
+      // 只保留仍在新列表中的图片的 URL/进度/标签
+      const newIds = new Set(action.payload.map(img => img.id))
+      const keepIfPresent = (map) => {
+        const result = {}
+        for (const [id, val] of Object.entries(map)) {
+          if (newIds.has(id)) result[id] = val
+        }
+        return result
+      }
+      const imageUrls = keepIfPresent(state.imageUrls)
+      const uploadProgress = keepIfPresent(state.uploadProgress)
+      const imageTags = keepIfPresent(state.imageTags)
       return {
         ...state,
         uploadedImages: action.payload,
-        imageUrls: {},
-        uploadProgress: {},
-        uploading: false,
-        imageTags: {},
-        tags: [],
+        imageUrls,
+        uploadProgress,
+        uploading: Object.keys(uploadProgress).some(id => uploadProgress[id] < 100),
+        imageTags,
+        tags: rebuildTags(imageTags),
         resultImages: [],
         error: '',
       }
+    }
 
     case 'REMOVE_IMAGE': {
       const filtered = state.uploadedImages.filter(img => img.id !== action.payload)
@@ -79,12 +92,20 @@ function reducer(state, action) {
       }
     }
 
-    case 'UPLOAD_ERROR':
+    case 'UPLOAD_ERROR': {
+      // 标记失败图片为"已完成"（不再计入上传中），同时保留其他上传中的图片状态
+      const newProgress = { ...state.uploadProgress }
+      if (action.payload?.imageId) {
+        newProgress[action.payload.imageId] = 100 // 失败也算完成，不再阻塞 uploading 状态
+      }
+      const stillUploading = Object.keys(newProgress).some(id => newProgress[id] < 100)
       return {
         ...state,
-        error: action.payload,
-        uploading: false,
+        error: action.payload?.message || action.payload,
+        uploadProgress: newProgress,
+        uploading: stillUploading,
       }
+    }
 
     case 'SET_IMAGE_TAG': {
       const newTags = { ...state.imageTags, [action.payload.imageId]: action.payload.tag }

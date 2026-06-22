@@ -18,7 +18,7 @@ export async function uploadImage(file, onProgress) {
   formData.append('file', file)
 
   const { data } = await client.post('/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    // 不手动设 Content-Type，让浏览器自动添加 multipart/form-data 的 boundary 参数
     onUploadProgress: (e) => {
       if (onProgress && e.total) {
         onProgress(Math.round((e.loaded / e.total) * 100))
