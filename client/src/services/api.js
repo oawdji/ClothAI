@@ -8,10 +8,31 @@ const client = axios.create({
 })
 
 /**
+ * 上传单张图片到后端（后端代理转发到 ToAPIs）
+ * @param {File} file - 原始文件对象
+ * @param {function} onProgress - 进度回调 (0-100)
+ * @returns {Promise<{ url: string, filename: string }>}
+ */
+export async function uploadImage(file, onProgress) {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const { data } = await client.post('/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (e) => {
+      if (onProgress && e.total) {
+        onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    },
+  })
+  return data.data
+}
+
+/**
  * 提交 AI 生成请求
  * @param {object} params
  * @param {string} params.mode
- * @param {Array} params.groups
+ * @param {Array<{ tag: string, images: Array<{ name: string, url: string }> }>} params.groups
  * @param {object} params.config
  * @returns {Promise<{ images: string[] }>}
  */

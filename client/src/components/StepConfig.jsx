@@ -53,11 +53,16 @@ function RadioGroup({ label, options, value, onChange }) {
 function StepConfig() {
   const { state, dispatch } = useAppState()
 
+  const allUploaded = state.uploadedImages.length > 0
+    && state.uploadedImages.every(img => state.imageUrls[img.id])
+  const allTagged = state.uploadedImages.length > 0
+    && state.tags.length > 0
+    && Object.values(state.imageTags).filter(Boolean).length >= state.uploadedImages.length
+
   const canGenerate =
     !state.generating &&
-    state.uploadedImages.length > 0 &&
-    state.tags.length > 0 &&
-    Object.values(state.imageTags).filter(Boolean).length > 0
+    allUploaded &&
+    allTagged
 
   const handleGenerate = () => {
     dispatch({ type: 'GENERATE_START' })
@@ -142,7 +147,11 @@ function StepConfig() {
 
       {!canGenerate && state.uploadedImages.length > 0 && (
         <p style={{ color: '#9ca3af', fontSize: 12, textAlign: 'center', marginTop: 8 }}>
-          请先上传图片并为图片分配标签
+          {!allUploaded
+            ? '⏳ 请等待图片上传完成'
+            : !allTagged
+              ? '🏷️ 请为所有图片分配标签'
+              : ''}
         </p>
       )}
     </section>

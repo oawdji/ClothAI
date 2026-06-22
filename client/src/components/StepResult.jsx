@@ -14,13 +14,14 @@ function StepResult() {
     if (!state.generating || hasTriggered.current) return
     hasTriggered.current = true
 
-    // 构建 groups
+    // 构建 groups（使用上传后的真实 URL）
     const tagGroups = {}
     state.uploadedImages.forEach(img => {
       const tag = state.imageTags[img.id]
-      if (!tag) return
+      const url = state.imageUrls[img.id]
+      if (!tag || !url) return
       if (!tagGroups[tag]) tagGroups[tag] = []
-      tagGroups[tag].push({ name: img.name, data: img.dataUrl })
+      tagGroups[tag].push({ name: img.name, url })
     })
 
     const groups = Object.entries(tagGroups).map(([tag, images]) => ({ tag, images }))
@@ -38,20 +39,28 @@ function StepResult() {
   }, [state.generating])
 
   // 单张下载
-  const downloadSingle = (base64, index) => {
+  const downloadSingle = async (imgSrc, index) => {
     try {
-      const parts = base64.startsWith('data:') ? base64.split(',') : ['', base64]
-      const byteString = atob(parts[1] || parts[0])
-      const ab = new ArrayBuffer(byteString.length)
-      const ia = new Uint8Array(ab)
-      for (let i = 0; i < byteString.length; i++) {
-        ia[i] = byteString.charCodeAt(i)
+      // 如果已是 base64 data URL，直接解码下载
+      if (imgSrc.startsWith('data:')) {
+        const parts = imgSrc.split(',');
+        const byteString = atob(parts[1] || parts[0]);
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], { type: 'image/png' });
+        saveAs(blob, `model-${index + 1}.png`);
+      } else {
+        // 远程 URL，先 fetch 再下载
+        const response = await fetch(imgSrc);
+        const blob = await response.blob();
+        saveAs(blob, `model-${index + 1}.png`);
       }
-      const blob = new Blob([ab], { type: 'image/png' })
-      saveAs(blob, `model-${index + 1}.png`)
     } catch (e) {
-      // 兜底：如果 base64 解码失败，尝试直接下载
-      saveAs(base64, `model-${index + 1}.png`)
+      // 兜底：直接打开图片链接
+      window.open(imgSrc, '_blank');
     }
   }
 

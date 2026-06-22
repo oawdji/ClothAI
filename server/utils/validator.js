@@ -29,7 +29,8 @@ function validateGenerate(body) {
       return { valid: false, error: `标签"${g.tag}"下至少需要一张图片` };
     }
     for (let j = 0; j < g.images.length; j++) {
-      if (!g.images[j].data || typeof g.images[j].data !== 'string') {
+      const img = g.images[j];
+      if (!(img.url || img.data) || (img.url && typeof img.url !== 'string') || (img.data && typeof img.data !== 'string')) {
         return { valid: false, error: `标签"${g.tag}"的第 ${j + 1} 张图片数据无效` };
       }
     }

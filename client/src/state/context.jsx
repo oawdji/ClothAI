@@ -4,10 +4,13 @@ const AppContext = createContext(null)
 
 const initialState = {
   // 步骤1
-  uploadedImages: [],
+  uploadedImages: [],      // 本地预览用：{ id, name, dataUrl, file }
+  imageUrls: {},           // 上传后：{ imageId: url }
+  uploading: false,        // 是否正在上传
+  uploadProgress: {},      // 每张图片的上传进度：{ imageId: 0-100 }
   // 步骤2
   tags: [],
-  imageTags: {},        // { imageId: tagName }
+  imageTags: {},           // { imageId: tagName }
   // 步骤3
   mode: 'outfit',
   config: {
@@ -28,6 +31,9 @@ function reducer(state, action) {
       return {
         ...state,
         uploadedImages: action.payload,
+        imageUrls: {},
+        uploadProgress: {},
+        uploading: false,
         imageTags: {},
         tags: [],
         resultImages: [],
@@ -38,13 +44,47 @@ function reducer(state, action) {
       const filtered = state.uploadedImages.filter(img => img.id !== action.payload)
       const newTags = { ...state.imageTags }
       delete newTags[action.payload]
+      const newUrls = { ...state.imageUrls }
+      delete newUrls[action.payload]
+      const newProgress = { ...state.uploadProgress }
+      delete newProgress[action.payload]
       return {
         ...state,
         uploadedImages: filtered,
         imageTags: newTags,
+        imageUrls: newUrls,
+        uploadProgress: newProgress,
         tags: rebuildTags(newTags),
       }
     }
+
+    // 上传状态
+    case 'UPLOAD_START':
+      return { ...state, uploading: true }
+
+    case 'UPLOAD_PROGRESS':
+      return {
+        ...state,
+        uploadProgress: { ...state.uploadProgress, [action.payload.imageId]: action.payload.progress },
+      }
+
+    case 'UPLOAD_SUCCESS': {
+      const newUrls = { ...state.imageUrls, [action.payload.imageId]: action.payload.url }
+      const newProgress = { ...state.uploadProgress, [action.payload.imageId]: 100 }
+      return {
+        ...state,
+        imageUrls: newUrls,
+        uploadProgress: newProgress,
+        uploading: Object.keys(newProgress).some(id => newProgress[id] < 100),
+      }
+    }
+
+    case 'UPLOAD_ERROR':
+      return {
+        ...state,
+        error: action.payload,
+        uploading: false,
+      }
 
     case 'SET_IMAGE_TAG': {
       const newTags = { ...state.imageTags, [action.payload.imageId]: action.payload.tag }

@@ -24,18 +24,24 @@ router.post('/generate', async (req, res, next) => {
       pose: config.pose || 'standing',
     };
 
-    // 3. 调用 AI 生成
     const aiClient = getClient();
-    const images = await aiClient.generate({ mode, groups, config: finalConfig });
 
-    // 4. 返回结果
+    // 3. 上传所有图片到 ToAPIs，获取 URL
+    console.log(`[API] 开始上传图片，共 ${groups.length} 组...`);
+    const groupsWithUrls = [];
+    for (const group of groups) {
+      const uploadedImages = await aiClient.uploadImages(group.images);
+      groupsWithUrls.push({ tag: group.tag, images: uploadedImages });
+    }
+    console.log('[API] 图片上传全部完成');
+
+    // 4. 调用 AI 生成
+    const resultImages = await aiClient.generate({ mode, groups: groupsWithUrls, config: finalConfig });
+
+    // 5. 返回结果
     res.json({
       success: true,
-      images: images.map(img => {
-        // 如果已经是 data URL 则直接返回，否则包装
-        if (img.startsWith('data:')) return img;
-        return `data:image/png;base64,${img}`;
-      }),
+      images: resultImages,
     });
   } catch (err) {
     next(err);

@@ -3,6 +3,7 @@ const cors = require('cors');
 require('dotenv').config();
 
 const apiRouter = require('./routes/api');
+const uploadRouter = require('./routes/upload');
 const errorHandler = require('./middleware/error-handler');
 
 const app = express();
@@ -16,6 +17,7 @@ app.use(express.json({ limit: '50mb' }));
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+app.use('/api', uploadRouter);
 app.use('/api', apiRouter);
 
 // 全局错误处理（必须放在路由之后）

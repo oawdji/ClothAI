@@ -1,5 +1,4 @@
 const { buildPrompt } = require('./prompt-builder');
-const { normalize } = require('./image-processor');
 
 class AIClient {
   constructor(baseUrl, apiKey, timeout = 120000) {
@@ -9,12 +8,59 @@ class AIClient {
   }
 
   /**
+   * 上传图片到 ToAPIs，获取可用的图片 URL
+   * @param {Buffer} fileBuffer - 图片文件 Buffer
+   * @param {string} filename - 原始文件名
+   * @returns {Promise<string>} 图片 URL
+   */
+  async uploadImage(fileBuffer, filename) {
+    console.log(`[AIClient] 上传图片: ${filename} (${(fileBuffer.length / 1024).toFixed(1)} KB)`);
+
+    const formData = new FormData();
+    const blob = new Blob([fileBuffer], { type: this._getMimeType(filename) });
+    formData.append('file', blob, filename);
+
+    const response = await this._fetch('/uploads/images', {
+      method: 'POST',
+      body: formData,
+    }, false); // 不设 Content-Type，让浏览器/Node 自动设置 multipart boundary
+
+    const result = await response.json();
+    const imageUrl = result.data?.url;
+
+    if (!imageUrl) {
+      console.error('[AIClient] 上传响应异常:', JSON.stringify(result).slice(0, 300));
+      throw new Error('上传图片失败：未返回图片 URL');
+    }
+
+    console.log(`[AIClient] 上传成功: ${imageUrl}`);
+    return imageUrl;
+  }
+
+  /**
+   * 批量上传图片，返回 URL 列表
+   * @param {Array<{ name: string, dataUrl: string }>} images
+   * @returns {Promise<Array<{ name: string, url: string }>>}
+   */
+  async uploadImages(images) {
+    const results = [];
+    for (const img of images) {
+      // 从 data URL 提取 Buffer
+      const dataUrl = img.data || img.dataUrl;
+      const buffer = this._dataUrlToBuffer(dataUrl);
+      const url = await this.uploadImage(buffer, img.name);
+      results.push({ name: img.name, url });
+    }
+    return results;
+  }
+
+  /**
    * 调用 AI 图片生成 API
    * @param {object} params
    * @param {string} params.mode - 'single' | 'outfit'
-   * @param {Array<{ tag: string, images: Array<{ name: string, data: string }> }>} params.groups
+   * @param {Array<{ tag: string, images: Array<{ name: string, url: string }> }>} params.groups
    * @param {{ gender: string, background: string, pose: string }} params.config
-   * @returns {Promise<string[]>} 生成的结果图 (base64 数组)
+   * @returns {Promise<string[]>} 生成的结果图 (URL 数组)
    */
   async generate({ mode, groups, config }) {
     const prompt = buildPrompt(config);
@@ -22,38 +68,32 @@ class AIClient {
     if (mode === 'single') {
       // 一对一模式：每组独立调用，并行发出
       const results = await Promise.all(
-        groups.map(group => this._callAPI(prompt, group.images))
+        groups.map(group => this._generateImage(prompt, group.images))
       );
       return results.flat();
     } else {
       // 组合穿搭模式：所有图片合并一次调用
       const allImages = groups.flatMap(g => g.images);
-      const result = await this._callAPI(prompt, allImages);
+      const result = await this._generateImage(prompt, allImages);
       return result;
     }
   }
 
   /**
-   * 底层 API 调用 — 适配 ToAPIs 格式
+   * 调用 ToAPIs 图片生成接口
    * @param {string} prompt
-   * @param {Array<{ name: string, data: string }>} images
-   * @returns {Promise<string[]>}
+   * @param {Array<{ name: string, url: string }>} images
+   * @returns {Promise<string[]>} 生成的结果图 URL 数组
    */
-  async _callAPI(prompt, images) {
-    // 规范化所有图片，构建 data URL 列表
-    const imageUrls = images.map(img => {
-      normalize(img.data); // 校验格式和大小
-      return img.data;     // 直接使用 data URL（支持 base64 内嵌）
-    });
+  async _generateImage(prompt, images) {
+    const imageUrls = images.map(img => img.url);
 
     const body = {
       model: 'gemini-3-pro-image-preview',
       prompt,
       size: '16:9',
       n: 1,
-      metadata: {
-        resolution: '2K',
-      },
+      metadata: { resolution: '2K' },
       image_urls: imageUrls,
     };
 
@@ -80,10 +120,10 @@ class AIClient {
   /**
    * 轮询任务状态直到完成
    * @param {string} taskId
-   * @returns {Promise<string[]>} base64 图片数组
+   * @returns {Promise<string[]>} 结果图片 URL 数组
    */
   async _pollTask(taskId) {
-    const maxAttempts = 60;       // 最多轮询 60 次
+    const maxAttempts = 90;       // 最多轮询 90 次 (3 分钟)
     const pollInterval = 2000;    // 每 2 秒一次
     const maxWait = this.timeout; // 超时上限
 
@@ -101,16 +141,31 @@ class AIClient {
       });
 
       const task = await response.json();
-      console.log(`[AIClient] 轮询 ${i + 1}/${maxAttempts}: 状态=${task.status}`);
+      console.log(`[AIClient] 轮询 ${i + 1}/${maxAttempts}: 状态=${task.status}, 进度=${task.progress || '?'}%`);
 
       if (task.status === 'completed' || task.status === 'succeeded') {
-        // 提取结果图片（兼容多种返回格式）
-        if (task.images && Array.isArray(task.images)) {
+        // 兼容多种 ToAPIs 返回格式
+        // 格式1: { url: '...' } — 单张结果图 URL
+        if (task.url) {
+          return [task.url];
+        }
+        // 格式2: { images: [...] }
+        if (task.images && Array.isArray(task.images) && task.images.length > 0) {
           return task.images;
         }
-        if (task.result && task.result.images) {
+        // 格式3: { result: { images: [...] } }
+        if (task.result?.images && Array.isArray(task.result.images)) {
           return task.result.images;
         }
+        // 格式4: { result: { url: '...' } }
+        if (task.result?.url) {
+          return [task.result.url];
+        }
+        // 格式5: { result: { data: [{ url: '...' }] } }
+        if (task.result?.data && Array.isArray(task.result.data)) {
+          return task.result.data.map(item => item.url || item);
+        }
+        // 格式6: { output: [...] }
         if (task.output && Array.isArray(task.output)) {
           return task.output;
         }
@@ -121,8 +176,6 @@ class AIClient {
       if (task.status === 'failed' || task.status === 'error') {
         throw new Error(`AI 生成失败: ${task.error || task.message || '未知错误'}`);
       }
-
-      // 其他状态 (processing, queued, pending 等) 继续轮询
     }
 
     throw new Error('AI 生成超时（超过最大轮询次数），请重试');
@@ -131,19 +184,23 @@ class AIClient {
   /**
    * 封装 fetch，自动添加认证头
    */
-  async _fetch(path, options = {}) {
+  async _fetch(path, options = {}, setContentType = true) {
     const url = `${this.baseUrl}${path}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
 
+    const headers = {
+      'Authorization': `Bearer ${this.apiKey}`,
+    };
+    // 仅 JSON 请求设 Content-Type；FormData 由 http 库自动设
+    if (setContentType) {
+      headers['Content-Type'] = 'application/json';
+    }
+
     try {
       const response = await fetch(url, {
         ...options,
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
+        headers: { ...headers, ...(options.headers || {}) },
         signal: controller.signal,
       });
 
@@ -156,6 +213,26 @@ class AIClient {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * 从 data URL 提取 Buffer
+   */
+  _dataUrlToBuffer(dataUrl) {
+    const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error('无效的 data URL 格式');
+    }
+    return Buffer.from(matches[2], 'base64');
+  }
+
+  /**
+   * 根据扩展名返回 MIME 类型
+   */
+  _getMimeType(filename) {
+    const ext = (filename || '').split('.').pop()?.toLowerCase();
+    const map = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+    return map[ext] || 'image/jpeg';
   }
 
   _sleep(ms) {
