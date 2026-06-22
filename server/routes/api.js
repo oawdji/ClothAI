@@ -26,17 +26,35 @@ router.post('/generate', async (req, res, next) => {
 
     const aiClient = getClient();
 
-    // 3. 上传所有图片到 ToAPIs，获取 URL
-    console.log(`[API] 开始上传图片，共 ${groups.length} 组...`);
+    // 3. 处理图片：已有 URL 的直接使用，有 base64 data 的先上传
+    console.log(`[API] 处理图片，共 ${groups.length} 组...`);
     const groupsWithUrls = [];
     for (const group of groups) {
-      const uploadedImages = await aiClient.uploadImages(group.images);
-      groupsWithUrls.push({ tag: group.tag, images: uploadedImages });
+      const hasUrl = group.images.every(img => img.url);
+      if (!hasUrl) {
+        const hasData = group.images.some(img => img.data || img.dataUrl);
+        console.log(`[API] 标签"${group.tag}": ${group.images.length} 张图片，` +
+          `有URL:${group.images.filter(i=>i.url).length} 有Data:${group.images.filter(i=>i.data||i.dataUrl).length}`);
+        console.log(`[API] 标签"${group.tag}"的图片需要上传...`);
+        try {
+          const uploadedImages = await aiClient.uploadImages(group.images);
+          console.log(`[API] 标签"${group.tag}"上传完成，共 ${uploadedImages.length} 个URL`);
+          groupsWithUrls.push({ tag: group.tag, images: uploadedImages });
+        } catch (uploadErr) {
+          console.error(`[API] 标签"${group.tag}"上传失败:`, uploadErr.message);
+          throw uploadErr;
+        }
+      } else {
+        console.log(`[API] 标签"${group.tag}": ${group.images.length} 张图片，全部已有URL，跳过上传`);
+        groupsWithUrls.push(group);
+      }
     }
-    console.log('[API] 图片上传全部完成');
+
+    console.log(`[API] 所有图片处理完毕，开始AI生成 (模式: ${mode})...`);
 
     // 4. 调用 AI 生成
     const resultImages = await aiClient.generate({ mode, groups: groupsWithUrls, config: finalConfig });
+    console.log(`[API] AI生成完成，共 ${resultImages.length} 张结果图`);
 
     // 5. 返回结果
     res.json({

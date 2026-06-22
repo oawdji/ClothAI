@@ -16,24 +16,33 @@ class AIClient {
   async uploadImage(fileBuffer, filename) {
     console.log(`[AIClient] 上传图片: ${filename} (${(fileBuffer.length / 1024).toFixed(1)} KB)`);
 
+    // Node.js 原生 FormData + Blob 上传
+    // 注：Node 21+ FormData 是全局可用，但 append 值必须为 Blob 实例
     const formData = new FormData();
-    const blob = new Blob([fileBuffer], { type: this._getMimeType(filename) });
+    const mimeType = this._getMimeType(filename);
+    const blob = new Blob([fileBuffer], { type: mimeType });
     formData.append('file', blob, filename);
 
     const response = await this._fetch('/uploads/images', {
       method: 'POST',
       body: formData,
-    }, false); // 不设 Content-Type，让浏览器/Node 自动设置 multipart boundary
+    }, false); // 不设 Content-Type，让 Node.js 自动设置 multipart boundary
 
     const result = await response.json();
-    const imageUrl = result.data?.url;
+    console.log('[AIClient] 上传响应:', JSON.stringify(result).slice(0, 400));
+
+    // 兼容多种 ToAPIs 返回格式
+    const imageUrl = result.data?.url
+      || result.data?.image_url
+      || result.url
+      || result.image_url;
 
     if (!imageUrl) {
-      console.error('[AIClient] 上传响应异常:', JSON.stringify(result).slice(0, 300));
-      throw new Error('上传图片失败：未返回图片 URL');
+      console.error('[AIClient] 未能从上传响应中提取图片 URL');
+      throw new Error('上传图片失败：API 未返回图片 URL');
     }
 
-    console.log(`[AIClient] 上传成功: ${imageUrl}`);
+    console.log(`[AIClient] 上传成功 → ${imageUrl}`);
     return imageUrl;
   }
 
@@ -45,8 +54,18 @@ class AIClient {
   async uploadImages(images) {
     const results = [];
     for (const img of images) {
-      // 从 data URL 提取 Buffer
+      // 已有 URL 的图片直接透传，不重复上传
+      if (img.url && typeof img.url === 'string' && img.url.startsWith('http')) {
+        console.log(`[AIClient] 图片"${img.name}"已有URL，跳过上传`);
+        results.push({ name: img.name, url: img.url });
+        continue;
+      }
+
+      // 仅有 base64 data 的需要先上传
       const dataUrl = img.data || img.dataUrl;
+      if (!dataUrl || typeof dataUrl !== 'string') {
+        throw new Error(`图片"${img.name}"缺少数据：请先通过上传接口获取 URL`);
+      }
       const buffer = this._dataUrlToBuffer(dataUrl);
       const url = await this.uploadImage(buffer, img.name);
       results.push({ name: img.name, url });
@@ -86,7 +105,18 @@ class AIClient {
    * @returns {Promise<string[]>} 生成的结果图 URL 数组
    */
   async _generateImage(prompt, images) {
+    // 提取并校验图片 URL：确保全部是 HTTPS URL，不含 base64
     const imageUrls = images.map(img => img.url);
+    const base64Urls = imageUrls.filter(url => !url || (typeof url === 'string' && url.startsWith('data:')));
+    if (base64Urls.length > 0) {
+      throw new Error(
+        `检测到 ${base64Urls.length} 张图片仍是 base64 格式。` +
+        `API 不再支持在生成接口中直接传入 base64 图片数据，请先上传到 ${this.baseUrl}/uploads/images 获取 URL`
+      );
+    }
+    if (!imageUrls.every(url => typeof url === 'string' && url.startsWith('http'))) {
+      throw new Error('图片 URL 格式无效，需要以 https:// 开头的完整 URL');
+    }
 
     const body = {
       model: 'gemini-3-pro-image-preview',
@@ -173,8 +203,14 @@ class AIClient {
         return [];
       }
 
-      if (task.status === 'failed' || task.status === 'error') {
-        throw new Error(`AI 生成失败: ${task.error || task.message || '未知错误'}`);
+      if (task.status === 'failed' || task.status === 'error' || task.status === 'canceled') {
+        const reason = task.error || task.message || task.status;
+        throw new Error(`AI 生成失败: ${reason}`);
+      }
+
+      // 异常状态（API 未知返回）
+      if (!['pending', 'processing', 'in_progress', 'running'].includes(task.status)) {
+        console.warn(`[AIClient] 未知任务状态: ${task.status}`, JSON.stringify(task).slice(0, 300));
       }
     }
 
@@ -206,7 +242,10 @@ class AIClient {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`AI API 返回错误 (${response.status}): ${errorText}`);
+        console.error(`[AIClient] API错误 ${response.status}: ${errorText.slice(0, 300)}`);
+        throw new Error(
+          `AI API 返回错误 (${response.status}): ${errorText.slice(0, 200)}`
+        );
       }
 
       return response;

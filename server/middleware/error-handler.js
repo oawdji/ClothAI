@@ -4,8 +4,11 @@
  */
 function errorHandler(err, req, res, _next) {
   console.error(`[Error] ${err.message}`);
+  if (err.cause) {
+    console.error(`[Error] 根本原因:`, err.cause);
+  }
   if (err.stack) {
-    console.error(err.stack.split('\n').slice(0, 6).join('\n'));
+    console.error(err.stack.split('\n').slice(0, 10).join('\n'));
   }
 
   // 已知的业务错误（带状态码）
