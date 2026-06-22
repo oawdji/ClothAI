@@ -16,8 +16,113 @@ body {
   padding: 24px 16px 60px;
 }
 
-.app h1 {
+.app-header {
   text-align: center;
   padding: 32px 0 24px;
+}
+
+.app-header h1 {
   font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.app-header p {
+  color: #888;
+  font-size: 14px;
+}
+
+/* 步骤卡片 */
+.step-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.step-card h2 {
+  font-size: 18px;
+  margin-bottom: 16px;
+  color: #222;
+}
+
+/* 按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: #4f46e5;
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #4338ca;
+}
+
+.btn-primary:disabled {
+  background: #c7d2fe;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.btn-secondary:hover {
+  background: #e5e7eb;
+}
+
+.btn-sm {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+/* 通用 */
+.error-msg {
+  color: #dc2626;
+  font-size: 13px;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border-radius: 6px;
+  margin-top: 8px;
+}
+
+/* 加载旋转器 */
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e5e7eb;
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-box {
+  text-align: center;
+  padding: 48px 24px;
+}
+
+.loading-box p {
+  color: #888;
+}
+
+.loading-box .sub {
+  color: #bbb;
+  font-size: 12px;
+  margin-top: 4px;
 }

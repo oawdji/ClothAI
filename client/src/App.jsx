@@ -1,8 +1,22 @@
+import { AppProvider } from './state/context'
+import Header from './components/Header'
+import StepUpload from './components/StepUpload'
+import StepTagging from './components/StepTagging'
+import StepConfig from './components/StepConfig'
+import StepResult from './components/StepResult'
+import './App.css'
+
 function App() {
   return (
-    <div className="app">
-      <h1>🧥 虚拟试衣生成器</h1>
-    </div>
+    <AppProvider>
+      <div className="app">
+        <Header />
+        <StepUpload />
+        <StepTagging />
+        <StepConfig />
+        <StepResult />
+      </div>
+    </AppProvider>
   )
 }
 

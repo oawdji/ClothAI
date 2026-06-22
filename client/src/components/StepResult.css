@@ -1,0 +1,28 @@
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+.result-card {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.result-card img {
+  width: 100%;
+  display: block;
+}
+
+.result-card .actions {
+  padding: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.download-all {
+  text-align: center;
+  margin-top: 20px;
+}
